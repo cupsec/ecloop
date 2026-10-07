@@ -1,6 +1,6 @@
 # ecscan: rancangan
 
-Status: **draft** (belum ada kode). Referensi teknik: `docs/ref/start.py`
+Status: **disetujui untuk tahap 1** (belum ada kode). Referensi teknik: `docs/ref/start.py`
 dan `docs/ref/start-py-notes.md`.
 
 ## 1. Tujuan
@@ -209,6 +209,36 @@ json.url        = https://server-saya/hook
    unit yang tidak selesai dikembalikan, key yang ditemukan dilaporkan ke server,
    lalu server menyuruh semua worker berhenti.
 
+## 11. Default yang ditetapkan
+
+| Hal | Default |
+|---|---|
+| suffix / sub-blok | `-x 7`, `-sub 4` (65.536 key per sub-blok) |
+| urutan prefix | `shuffle`, Feistel 6 ronde, fungsi ronde splitmix64, cycle-walking ke `[0,N)` |
+| batas indeks prefix | `N < 2^63`; kalau lebih, minta `-x` lebih besar |
+| slice `K` | dari `-T` (default 5 detik) lewat bench singkat saat `new`, atau ditetapkan langsung dengan `-slice` |
+| format job | teks `kunci = nilai`; `job_id` = SHA256 isi job yang dinormalisasi (16 hex pertama) |
+| state | ditulis atomik (file sementara lalu rename) setiap 10 detik dan saat keluar |
+| thread | jumlah CPU |
+| kode keluar | 0 selesai, 1 error, 3 key ditemukan |
+| status | satu baris: pass, counter, prefix sekarang, % slice, Mkeys/s, ditemukan |
+
+## 12. Kriteria selesai tahap 1
+
+1. **Order**: untuk N kecil (1000, 1024, 2^20), setiap mode mengunjungi setiap
+   indeks tepat sekali; `lookup(order(i)) = i` untuk shuffle, spread, dan jump.
+2. **Cakupan**: pada range kecil dengan mode debug, setiap key dicek tepat
+   sekali setelah semua pass selesai.
+3. **Hasil**: pada `-r 8000:ffffff` dengan `data/btc-puzzles-hash`, ditemukan
+   kunci yang sama dengan `make add` milik ecloop (9 key).
+4. **Seal**: enkripsi lalu dekripsi kembali sama; pesan yang diubah ditolak.
+5. **Notify**: perintah curl untuk ketiga kanal benar (diuji dengan mode
+   dry-run/URL lokal), dan kegagalan kirim tidak menghentikan stop.
+6. **Windows**: cross-compile MinGW-w64 berhasil; jalan di Wine kalau tersedia.
+7. **Kecepatan**: dengan jumlah thread yang sama, maksimal sekitar 5% lebih
+   lambat dari `ecloop add`.
+8. **`ecloop`** tetap ter-build dan `make add` tetap menemukan 9 key.
+
 ## Riwayat keputusan
 
 - 2026-10-07: prefix 11 hex terstruktur, suffix juga acak dan discan sebatas waktu, lalu ganti prefix.
@@ -221,3 +251,4 @@ json.url        = https://server-saya/hook
 - 2026-10-07: notifikasi saat key ditemukan ke **Telegram, Discord, generic JSON**.
 - 2026-10-07: key di notifikasi **dienkripsi** (ECIES secp256k1); key polos tidak pernah dikirim.
 - 2026-10-07: setelah key ditemukan: **scan berhenti, tanpa shutdown**. Di pool, server menghentikan semua worker.
+- 2026-10-07: desain disetujui untuk implementasi tahap 1; default di bagian 11, kriteria selesai di bagian 12.

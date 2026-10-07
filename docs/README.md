@@ -1,12 +1,12 @@
 # Dokumentasi (branch `docs`)
 
-Baca [`RULES.md`](RULES.md) dulu sebelum mengubah apa pun.
+Baca [`RULES.md`](RULES.md) dulu sebelum mengubah apa pun. Sesi baru: mulai dari [`HANDOFF.md`](HANDOFF.md).
 
 ## Desain
 
 | Dokumen | Status | Isi |
 |---|---|---|
-| [`design/ecscan.md`](design/ecscan.md) | draft | aplikasi scan baru (per app di atas `core/`, Linux + Windows): prefix terstruktur, suffix acak berbatas waktu, multi-pass, job file, notifikasi terenkripsi, persiapan pool |
+| [`design/ecscan.md`](design/ecscan.md) | disetujui (tahap 1) | aplikasi scan baru (per app di atas `core/`, Linux + Windows): prefix terstruktur, suffix acak berbatas waktu, multi-pass, job file, notifikasi terenkripsi, persiapan pool |
 
 ## Referensi
 
