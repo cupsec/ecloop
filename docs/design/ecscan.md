@@ -1,6 +1,6 @@
 # ecscan: rancangan
 
-Status: **draft desain** (belum ada kode). Referensi teknik: `docs/ref/start.py`
+Status: **draft** (belum ada kode). Referensi teknik: `docs/ref/start.py`
 dan `docs/ref/start-py-notes.md`.
 
 ## 1. Tujuan
@@ -131,3 +131,11 @@ unit sendiri; mode pool menerima unit dari server. Engine tidak tahu bedanya.
    harus ketemu, dan cakupan multi-pass harus tepat 100% tanpa duplikat.
 2. **Pool**: `serve` / `work` (TCP sederhana), sewa unit dengan timeout,
    unit yang tidak selesai dikembalikan, key yang ditemukan dilaporkan ke server.
+
+## Riwayat keputusan
+
+- 2026-10-07: prefix 11 hex terstruktur, suffix juga acak dan discan sebatas waktu, lalu ganti prefix.
+- 2026-10-07: sisa suffix ditangani dengan **multi-pass** (cakupan akhirnya 100%).
+- 2026-10-07: mode prefix versi pertama: `shuffle`, `spread`, `jump`/`jump-pct`, `lcg`.
+- 2026-10-07: filter pola dari `start.py` **disertakan**.
+- 2026-10-07: dibuat sebagai aplikasi baru (bukan perintah di `ecloop`), dengan rencana pool untuk sekitar 5 laptop.
