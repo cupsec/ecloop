@@ -1,7 +1,9 @@
 # Aturan branch `docs`
 
 Branch `docs` menyimpan dokumentasi, desain, dan referensi. `main` tetap
-berisi kode saja.
+berisi kode saja, kecuali `CLAUDE.md` dan `.claude/` (instruksi dan hook untuk
+sesi Claude). Hook `SessionStart` mencetak `RULES.md` dan `HANDOFF.md` dari
+branch ini secara otomatis setiap sesi dimulai.
 
 ## 1. Arah merge
 
