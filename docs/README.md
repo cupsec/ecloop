@@ -6,7 +6,7 @@ Baca [`RULES.md`](RULES.md) dulu sebelum mengubah apa pun.
 
 | Dokumen | Status | Isi |
 |---|---|---|
-| [`design/ecscan.md`](design/ecscan.md) | draft | aplikasi scan baru: prefix terstruktur, suffix acak berbatas waktu, multi-pass, job file, persiapan pool |
+| [`design/ecscan.md`](design/ecscan.md) | draft | aplikasi scan baru (per app di atas `core/`, Linux + Windows): prefix terstruktur, suffix acak berbatas waktu, multi-pass, job file, notifikasi terenkripsi, persiapan pool |
 
 ## Referensi
 

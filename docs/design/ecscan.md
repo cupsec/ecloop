@@ -12,6 +12,9 @@ Satu aplikasi baru, `ecscan`, di repo yang sama dengan ecloop:
 - Semua teknik urutan dipilih lewat satu set argumen yang konsisten.
 - Satu proses, inisialisasi **sekali**: filter, gtable, titik precompute, thread pool.
 - Siap untuk **pool** (beberapa laptop) tanpa mengubah fondasi.
+- Jalan di **Linux dan Windows**.
+- Dibangun **per aplikasi** di atas fondasi bersama (`core/`), sehingga
+  aplikasi berikutnya tinggal memakai fungsi yang sudah matang.
 
 ## 2. Model ruang kunci
 
@@ -102,6 +105,8 @@ ecscan run    job.ini [-t threads] [-state p71.state] [-out found.txt]
 ecscan plan   job.ini [-n 20]            # cetak prefix/sub-blok yang akan dikunjungi
 ecscan lookup job.ini <key>              # key -> pass, counter, posisi sub-blok
 ecscan bench  job.ini                    # ukur kecepatan, saran K untuk T tertentu
+ecscan keygen -o notify                  # pasangan kunci untuk enkripsi notifikasi
+ecscan decrypt notify.key <pesan>        # buka key terenkripsi dari webhook
 # tahap 2:
 ecscan serve  job.ini [-port 7171]       # koordinator pool
 ecscan work   <host:port> [-t threads]   # worker pool, job diambil dari server
@@ -109,28 +114,100 @@ ecscan work   <host:port> [-t threads]   # worker pool, job diambil dari server
 
 `lookup` untuk `lcg` mungkin hanya tersedia dengan pencarian (tidak ada invers murah).
 
-## 8. Arsitektur kode
+## 8. Arsitektur kode (per aplikasi)
 
 ```
-lib/            (ada)  ecc, addr, sha256, rmd160, bloom, utils
-scan/space.c    layout range/prefix/suffix/sub-blok, indeks <-> key
-scan/order.c    shuffle, spread, jump, lcg (akses acak + validasi)
-scan/filter.c   filter pola prefix
-scan/job.c      parse/simpan job, job_id, state, unit kerja
-scan/engine.c   thread pool, batch-add dari sub-blok, deadline, cek hash
-scan/main.c     CLI
+lib/              mesin ecloop (ecc, addr, sha256, rmd160, bloom). Diubah seminimal
+                  mungkin, hanya untuk kompatibilitas Windows.
+core/             fondasi bersama, dipakai semua aplikasi
+  platform.c      thread, mutex, waktu monotonic, CSPRNG, konsol, jalankan proses
+  cli.c           parser argumen bersama, pesan error seragam
+  job.c           file job, job_id, state, unit kerja
+  space.c         layout range/prefix/suffix/sub-blok, indeks <-> key
+  order.c         shuffle, spread, jump, lcg (akses acak + validasi)
+  filter.c        filter pola prefix
+  engine.c        thread pool, scan sub-blok (gtable), deadline, cek hash
+  found.c         verifikasi -> simpan -> notifikasi -> stop
+  notify.c        Telegram, Discord, generic JSON (lewat curl)
+  seal.c          enkripsi ECIES secp256k1 untuk key yang ditemukan
+apps/ecscan/      aplikasi pertama: CLI + alur scan
+apps/<berikut>/   aplikasi lain cukup memakai core/
 ```
 
-Unit kerja = `(pass, counter_awal, counter_akhir)`. Mode lokal menghasilkan
-unit sendiri; mode pool menerima unit dari server. Engine tidak tahu bedanya.
+Aturan: kode yang mungkin dipakai dua aplikasi masuk `core/`. Aplikasi hanya
+berisi CLI dan alurnya sendiri. Unit kerja = `(pass, counter_awal,
+counter_akhir)`; mode lokal membuat unit sendiri, mode pool menerima unit dari
+server, dan engine tidak tahu bedanya.
 
-## 9. Tahapan
+### Platform
 
-1. **Inti**: space, order (4 mode), filter, job/state, engine, `run/plan/lookup/bench`.
+| | Linux | Windows |
+|---|---|---|
+| Compiler | gcc / clang | MinGW-w64 (MSYS2) atau cross-compile dari Linux. MSVC **tidak** didukung (`__int128`, builtin GCC) |
+| Thread | pthreads | winpthreads (MinGW) |
+| Random | `getrandom` / `/dev/urandom` | `BCryptGenRandom` |
+| HTTP | `curl` | `curl.exe` (bawaan Windows 10+) |
+
+Build: `make ecscan` dan `make ecscan OS=windows` (menghasilkan `ecscan.exe`).
+
+## 9. Saat key ditemukan
+
+Urutan tetap, supaya key tidak pernah hilang:
+
+1. **Verifikasi**: hitung ulang pubkey dari private key, cocokkan hash160.
+   Positif palsu dari bloom filter dicatat sebagai peringatan, lalu scan lanjut.
+2. **Simpan**: tulis ke file found lalu `fsync`, sebelum langkah lain.
+3. **Notifikasi**: kirim ke semua kanal yang diaktifkan (Telegram, Discord,
+   generic JSON), dengan retry hingga sekitar 2 menit. Kegagalan kirim tidak
+   menghentikan langkah berikutnya.
+4. **Stop**: semua thread berhenti dan proses keluar dengan kode khusus.
+   **Tidak ada shutdown.** Di mode pool: worker melapor ke server, lalu server
+   menyuruh semua worker berhenti.
+
+### Isi notifikasi
+
+Isinya: nama mesin, job_id, alamat/hash160, waktu, dan **key terenkripsi**.
+Private key polos **tidak pernah** dikirim.
+
+Enkripsi (ECIES secp256k1, memakai primitif di `lib/`):
+
+```
+r      = acak (CSPRNG),  R = r·G (33 byte compressed)
+S      = r·PubNotify,    k = SHA256(x(S) || R)
+k_enc  = SHA256(k || 01), k_mac = SHA256(k || 02)
+C      = privkey XOR SHA256(k_enc || 00000000)        (32 byte)
+tag    = HMAC-SHA256(k_mac, R || C)[0..16]
+pesan  = "ecs1:" + hex(R || C || tag)
+```
+
+- `ecscan keygen` membuat pasangan kunci notifikasi. Private-nya disimpan
+  offline; public-nya dimasukkan ke konfigurasi tiap laptop.
+- `ecscan decrypt` membuka pesan di perangkat yang aman.
+
+### Konfigurasi lokal
+
+Kanal notifikasi dan public key notifikasi disimpan di file konfigurasi lokal
+per mesin (misalnya `ecscan.local.conf`), **bukan** di file job, dan tidak
+pernah di-commit:
+
+```
+notify.pubkey   = 02ab...
+telegram.token  = ...
+telegram.chat   = ...
+discord.url     = https://discord.com/api/webhooks/...
+json.url        = https://server-saya/hook
+```
+
+## 10. Tahapan
+
+1. **Inti**: `core/` (platform, cli, job, space, order, filter, engine, found,
+   notify, seal) dan `apps/ecscan` (`new/run/plan/lookup/bench/keygen/decrypt`),
+   build Linux + Windows.
    Diuji pada range kecil yang key-nya diketahui (`data/btc-puzzles-hash`):
    harus ketemu, dan cakupan multi-pass harus tepat 100% tanpa duplikat.
 2. **Pool**: `serve` / `work` (TCP sederhana), sewa unit dengan timeout,
-   unit yang tidak selesai dikembalikan, key yang ditemukan dilaporkan ke server.
+   unit yang tidak selesai dikembalikan, key yang ditemukan dilaporkan ke server,
+   lalu server menyuruh semua worker berhenti.
 
 ## Riwayat keputusan
 
@@ -139,3 +216,8 @@ unit sendiri; mode pool menerima unit dari server. Engine tidak tahu bedanya.
 - 2026-10-07: mode prefix versi pertama: `shuffle`, `spread`, `jump`/`jump-pct`, `lcg`.
 - 2026-10-07: filter pola dari `start.py` **disertakan**.
 - 2026-10-07: dibuat sebagai aplikasi baru (bukan perintah di `ecloop`), dengan rencana pool untuk sekitar 5 laptop.
+- 2026-10-07: dibangun **per aplikasi** di atas fondasi bersama `core/`; aplikasi pertama `apps/ecscan`.
+- 2026-10-07: dukung **Windows** (MinGW-w64), selain Linux.
+- 2026-10-07: notifikasi saat key ditemukan ke **Telegram, Discord, generic JSON**.
+- 2026-10-07: key di notifikasi **dienkripsi** (ECIES secp256k1); key polos tidak pernah dikirim.
+- 2026-10-07: setelah key ditemukan: **scan berhenti, tanpa shutdown**. Di pool, server menghentikan semua worker.
